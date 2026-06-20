@@ -8,8 +8,17 @@
 - Note in README that Medium no longer issues new API tokens
 - Test article with local images (`test-with-images.md`) confirming end-to-end image upload pipeline
 
+## [1.2.0] — 2026-06-20
+
 ### Fixed
-- `--template --file` on a file with existing frontmatter previously produced a broken double `---` block; now merges missing medium fields into the existing frontmatter without touching existing fields
+- Image syntax inside fenced code blocks and inline code no longer triggers uploads
+- `api_get` now catches `HTTPError` and `URLError` and exits cleanly; `api_post` and `upload_image` share a common `_api_error()` helper; network errors in all three paths produce a clean error instead of a traceback
+- `--template --file` on a file with an empty frontmatter block (`---\n---`) now merges correctly instead of prepending a second block
+- Same local image referenced multiple times is uploaded only once
+- `sanitize()` now guards against empty input and empty output with a clear error message
+- Frontmatter `medium_url` write-back failure after a successful publish is now a warning rather than a crash
+- Duplicate entries in `medium_tags` are deduplicated with a stderr warning before the ≤5 check
+- Empty article body now emits a stderr warning
 
 ## [1.1.0] — 2026-06-20
 
