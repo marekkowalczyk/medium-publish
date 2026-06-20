@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -18,6 +19,13 @@ except ImportError:
 
 VALID_STATUSES = {"draft", "public", "unlisted"}
 MEDIUM_API_BASE = "https://api.medium.com/v1"
+
+
+def sanitize(s: str) -> str:
+    """Convert a string to a lowercase hyphen-separated slug."""
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    return s.strip("-")
 
 
 def load_env_file(path: Path) -> None:
@@ -75,6 +83,9 @@ def validate(post, file_path: Path) -> dict:
 
     publication = str(post.get("medium_publication", "")).strip() or None
 
+    slug_override = str(post.get("slug", "")).strip() or None
+    slug = sanitize(slug_override if slug_override else file_path.stem)
+
     if errors:
         for e in errors:
             print(f"error: {e}", file=sys.stderr)
@@ -86,6 +97,7 @@ def validate(post, file_path: Path) -> dict:
         "tags": tags,
         "canonical_url": canonical_url,
         "publication": publication,
+        "slug": slug,
     }
 
 
