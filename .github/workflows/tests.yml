@@ -13,7 +13,11 @@ jobs:
           python-version: "3.13"
 
       - name: Install sanitize
-        run: go install github.com/marekkowalczyk/sanitize@latest
+        run: |
+          url=$(curl -s https://api.github.com/repos/marekkowalczyk/sanitize/releases/latest \
+            | jq -r '.assets[] | select(.name | contains("linux_amd64.tar.gz")) | .browser_download_url')
+          curl -sSL "$url" | tar -xz sanitize
+          sudo mv sanitize /usr/local/bin/
 
       - name: Install Python dependencies
         run: pip install python-frontmatter pytest
