@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""Publish a Markdown article to Medium via the Medium REST API."""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+try:
+    import frontmatter
+except ImportError:
+    sys.exit("error: python-frontmatter is required. Install it with: pip install python-frontmatter")
+
+
+VALID_STATUSES = {"draft", "public", "unlisted"}
+MEDIUM_API_BASE = "https://api.medium.com/v1"
+
+
+def load_env_file(path: Path) -> None:
+    """Load KEY=VALUE pairs from a .env file into os.environ (no-op if missing)."""
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def get_token() -> str:
+    load_env_file(Path(__file__).parent / ".env")
+    token = os.environ.get("MEDIUM_API_TOKEN", "").strip()
+    if not token:
+        sys.exit("error: MEDIUM_API_TOKEN not set. Add it to .env or export it as an environment variable.")
+    return token
+
+
+def validate(post, file_path: Path) -> dict:
+    """Validate frontmatter and return a clean payload dict, or exit with an error."""
+    errors = []
+
+    title = post.get("title", "").strip() if post.get("title") else ""
+    if not title:
+        # Try to extract H1 from body
+        for line in post.content.splitlines():
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+    if not title:
+        errors.append("'title' is required (set in frontmatter or use an H1 heading)")
+
+    status = str(post.get("medium_status", "draft")).strip()
+    if status not in VALID_STATUSES:
+        errors.append(f"'medium_status' must be one of: {', '.join(sorted(VALID_STATUSES))} (got: {status!r})")
+
+    tags = post.get("medium_tags") or []
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    if len(tags) > 5:
+        errors.append(f"'medium_tags' may have at most 5 entries (got {len(tags)})")
+
+    canonical_url = str(post.get("medium_canonical_url", "")).strip() or None
+    if canonical_url:
+        parsed = urllib.parse.urlparse(canonical_url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            errors.append(f"'medium_canonical_url' must be a valid http/https URL (got: {canonical_url!r})")
+
+    publication = str(post.get("medium_publication", "")).strip() or None
+
+    if errors:
+        for e in errors:
+            print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    return {
+        "title": title,
+        "status": status,
+        "tags": tags,
+        "canonical_url": canonical_url,
+        "publication": publication,
+    }
+
+
+def api_get(path: str, token: str) -> dict:
+    req = urllib.request.Request(
+        f"{MEDIUM_API_BASE}{path}",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        return json.loads(resp.read())
+
+
+def api_post(path: str, token: str, payload: dict) -> dict:
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        f"{MEDIUM_API_BASE}{path}",
+        data=data,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        try:
+            detail = json.loads(body)
+            errors = detail.get("errors", [])
+            msg = "; ".join(f"{e.get('message', '')} (code {e.get('code', '?')})" for e in errors)
+        except Exception:
+            msg = body
+        sys.exit(f"error: Medium API returned {e.code}: {msg}")
+
+
+def resolve_publication_id(slug_or_id: str, user_id: str, token: str) -> str:
+    """Return the publication ID for a given slug or ID."""
+    data = api_get(f"/users/{user_id}/publications", token)
+    pubs = data.get("data", [])
+    for pub in pubs:
+        if pub.get("id") == slug_or_id or pub.get("url", "").rstrip("/").endswith(slug_or_id):
+            return pub["id"]
+    available = [f"{p.get('name')} ({p.get('id')})" for p in pubs]
+    sys.exit(
+        f"error: publication {slug_or_id!r} not found.\n"
+        + ("Available: " + ", ".join(available) if available else "No publications found.")
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Publish a Markdown article to Medium.")
+    parser.add_argument("--file", required=True, metavar="PATH", help="Path to the Markdown article.")
+    args = parser.parse_args()
+
+    file_path = Path(args.file)
+    if not file_path.exists():
+        sys.exit(f"error: file not found: {file_path}")
+    if not file_path.is_file():
+        sys.exit(f"error: not a file: {file_path}")
+
+    post = frontmatter.load(str(file_path))
+    token = get_token()
+    params = validate(post, file_path)
+
+    # Resolve user ID
+    me = api_get("/me", token)
+    user_id = me["data"]["id"]
+
+    payload = {
+        "title": params["title"],
+        "contentFormat": "markdown",
+        "content": post.content,
+        "publishStatus": params["status"],
+    }
+    if params["tags"]:
+        payload["tags"] = params["tags"]
+    if params["canonical_url"]:
+        payload["canonicalUrl"] = params["canonical_url"]
+
+    if params["publication"]:
+        pub_id = resolve_publication_id(params["publication"], user_id, token)
+        result = api_post(f"/publications/{pub_id}/posts", token, payload)
+    else:
+        result = api_post(f"/users/{user_id}/posts", token, payload)
+
+    url = result["data"].get("url", "")
+    print(url)
+
+
+if __name__ == "__main__":
+    main()
