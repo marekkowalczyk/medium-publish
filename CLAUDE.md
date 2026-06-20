@@ -53,6 +53,12 @@ Strip YAML frontmatter before sending. Medium receives body only, as `markdown` 
 - Success: post URL to stdout
 - Failure: human-readable error to stderr, exit non-zero
 
+## Commands
+
+```bash
+python3 -m pytest tests/ -v   # run tests
+```
+
 ## Dependencies
 
 - **`python-frontmatter`** — YAML frontmatter parsing (`pip install python-frontmatter`)
