@@ -6,6 +6,7 @@
 - MIT license
 - License badge in README
 - Note in README that Medium no longer issues new API tokens
+- Test article with local images (`test-with-images.md`) confirming end-to-end image upload pipeline
 
 ## [1.1.0] — 2026-06-20
 
