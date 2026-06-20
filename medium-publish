@@ -158,10 +158,30 @@ def resolve_publication_id(slug_or_id: str, user_id: str, token: str) -> str:
     )
 
 
+FRONTMATTER_TEMPLATE = """\
+---
+title:
+medium_status: draft
+medium_tags: []
+medium_canonical_url:
+medium_publication:
+slug:
+---
+"""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Publish a Markdown article to Medium.")
-    parser.add_argument("--file", required=True, metavar="PATH", help="Path to the Markdown article.")
+    parser.add_argument("--file", metavar="PATH", help="Path to the Markdown article.")
+    parser.add_argument("--template", action="store_true", help="Print canonical YAML frontmatter to stdout and exit.")
     args = parser.parse_args()
+
+    if args.template:
+        print(FRONTMATTER_TEMPLATE, end="")
+        return
+
+    if not args.file:
+        parser.error("--file is required")
 
     file_path = Path(args.file)
     if not file_path.exists():
