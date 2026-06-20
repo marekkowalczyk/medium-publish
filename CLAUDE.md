@@ -14,12 +14,6 @@ owner → /medium-publish skill → medium-publish script → Medium API
 - **Script** (`medium-publish`): pure mechanics — reads frontmatter, validates, calls the API, prints the post URL. No judgment layer.
 - **Skill** (lives in `system/` repo, not here): judgment layer — resolves ambiguity, confirms before publishing public posts, surfaces validation errors.
 
-## Implementation status
-
-Design phase only (as of 2026-06-20). The spec is in `DESIGN.md`. Nothing has been implemented yet.
-
-**First milestone:** a working Python script that can push a draft post.
-
 ## Script spec
 
 ### Invocation
@@ -31,11 +25,12 @@ Single argument. All configuration comes from the file's YAML frontmatter.
 ### Frontmatter fields
 | Field | Required | Notes |
 |---|---|---|
-| `title` | yes | Falls back to H1 if absent (TBD) |
+| `title` | yes | Falls back to H1 if absent |
 | `medium_status` | yes | `draft` \| `public` \| `unlisted`; default `draft` |
 | `medium_tags` | no | List, max 5 (Medium-enforced) |
 | `medium_canonical_url` | no | Valid URL; for cross-posts |
 | `medium_publication` | no | Publication slug/ID; absent = personal profile |
+| `slug` | no | Overrides filename as slug source; both sanitized via `sanitize` |
 
 ### Validation (must all pass before any network call)
 - `title` present and non-empty
@@ -58,9 +53,12 @@ Strip YAML frontmatter before sending. Medium receives body only, as `markdown` 
 - Success: post URL to stdout
 - Failure: human-readable error to stderr, exit non-zero
 
-## Implementation language
+## Dependencies
 
-Use **Python** with the `python-frontmatter` library. Single shebanged file, no build step.
+- **`python-frontmatter`** — YAML frontmatter parsing (`pip install python-frontmatter`)
+- **`sanitize`** — slug generation; install from `marekkowalczyk/sanitize` (binary must be on `$PATH`)
+
+Slug defaults to the sanitized filename stem; frontmatter `slug` field overrides it.
 
 ## Environment setup
 
