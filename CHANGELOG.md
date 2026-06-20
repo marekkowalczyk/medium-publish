@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- MIT license
+- License badge in README
+- Note in README that Medium no longer issues new API tokens
+
 ## [1.1.0] — 2026-06-20
 
 ### Added
