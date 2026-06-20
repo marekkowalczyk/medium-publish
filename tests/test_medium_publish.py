@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -315,7 +316,6 @@ class TestUploadImage:
             assert b"IMAGEDATA" in req.data
 
     def test_http_error_exits(self, tmp_path):
-        import urllib.error
         img = tmp_path / "photo.png"
         img.write_bytes(b"\x89PNG\r\n\x1a\n")
         err = urllib.error.HTTPError(url="", code=400, msg="Bad Request", hdrs={}, fp=io.BytesIO(b"bad image"))
@@ -378,3 +378,77 @@ class TestUploadLocalImages:
         content = "![x](nonexistent.png)"
         with pytest.raises(SystemExit):
             upload_local_images(content, tmp_path / "article.md", "token")
+
+    def test_image_in_fenced_code_block_not_uploaded(self, tmp_path):
+        content = "```\n![alt](local.png)\n```"
+        with patch.object(_mod, "upload_image") as mock_upload:
+            result = upload_local_images(content, tmp_path / "article.md", "token")
+        mock_upload.assert_not_called()
+        assert "local.png" in result  # original preserved
+
+    def test_image_in_inline_code_not_uploaded(self, tmp_path):
+        content = "Use `![alt](local.png)` in your markdown."
+        with patch.object(_mod, "upload_image") as mock_upload:
+            result = upload_local_images(content, tmp_path / "article.md", "token")
+        mock_upload.assert_not_called()
+        assert result == content
+
+    def test_duplicate_image_uploaded_once(self, tmp_path):
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n")
+        content = "![a](photo.png)\n\n![b](photo.png)"
+        with patch.object(_mod, "upload_image", return_value="https://cdn/x") as mock_upload:
+            upload_local_images(content, tmp_path / "article.md", "token")
+        mock_upload.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# validate() — new edge cases
+# ---------------------------------------------------------------------------
+
+class TestValidateEdgeCases:
+    def test_duplicate_tags_deduplicated(self, capsys):
+        post, path = make_post("---\ntitle: T\nmedium_status: draft\nmedium_tags: [python, cli, python]\n---")
+        params = validate(post, path)
+        assert params["tags"] == ["python", "cli"]
+        assert "duplicate" in capsys.readouterr().err
+
+    def test_empty_body_warns(self, capsys):
+        post, path = make_post("---\ntitle: T\nmedium_status: draft\n---\n")
+        validate(post, path)
+        assert "empty" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# api_get() error handling
+# ---------------------------------------------------------------------------
+
+class TestApiGetErrors:
+    def test_http_error_exits_cleanly(self):
+        err = urllib.error.HTTPError(url="", code=401, msg="Unauthorized", hdrs={}, fp=io.BytesIO(b'{"errors":[{"message":"Bad token","code":6003}]}'))
+        with patch("urllib.request.urlopen", side_effect=err):
+            with pytest.raises(SystemExit) as exc:
+                api_get("/me", "badtoken")
+            assert "401" in str(exc.value)
+
+    def test_url_error_exits_cleanly(self):
+        err = urllib.error.URLError(reason="Name or service not known")
+        with patch("urllib.request.urlopen", side_effect=err):
+            with pytest.raises(SystemExit) as exc:
+                api_get("/me", "token")
+            assert "network error" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# --template --file: empty frontmatter block
+# ---------------------------------------------------------------------------
+
+class TestTemplateEmptyFrontmatter:
+    def test_empty_frontmatter_block_gets_medium_fields(self, tmp_path):
+        article = tmp_path / "article.md"
+        article.write_text("---\n---\n\nBody.\n")
+        subprocess.run([sys.executable, SCRIPT, "--template", "--file", str(article)])
+        content = article.read_text()
+        assert content.count("---") == 2  # still one frontmatter block
+        post = frontmatter.loads(content)
+        assert "medium_status" in post.metadata

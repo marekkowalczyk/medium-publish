@@ -20,19 +20,24 @@ except ImportError:
     sys.exit("error: python-frontmatter is required. Install it with: pip install python-frontmatter")
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 VALID_STATUSES = {"draft", "public", "unlisted"}
 MEDIUM_API_BASE = "https://api.medium.com/v1"
 
 
 def sanitize(s: str) -> str:
     """Convert a string to a lowercase hyphen-separated slug via the sanitize binary."""
+    if not s.strip():
+        sys.exit("error: cannot produce a slug from an empty string (set 'slug' in frontmatter)")
     if not shutil.which("sanitize"):
         sys.exit("error: 'sanitize' binary not found. Install from github.com/marekkowalczyk/sanitize")
     result = subprocess.run(["sanitize", s], capture_output=True, text=True)
     if result.returncode != 0:
         sys.exit(f"error: sanitize failed: {result.stderr.strip()}")
-    return result.stdout.strip()
+    slug = result.stdout.strip()
+    if not slug:
+        sys.exit(f"error: sanitize produced an empty slug for {s!r} — set 'slug' in frontmatter")
+    return slug
 
 
 def load_env_file(path: Path) -> None:
@@ -79,6 +84,11 @@ def validate(post, file_path: Path) -> dict:
     tags = post.get("medium_tags") or []
     if isinstance(tags, str):
         tags = [t.strip() for t in tags.split(",") if t.strip()]
+    seen: set = set()
+    deduped = [t for t in tags if not (t in seen or seen.add(t))]
+    if len(deduped) != len(tags):
+        print("warning: duplicate tags removed from medium_tags", file=sys.stderr)
+    tags = deduped
     if len(tags) > 5:
         errors.append(f"'medium_tags' may have at most 5 entries (got {len(tags)})")
 
@@ -96,6 +106,9 @@ def validate(post, file_path: Path) -> dict:
 
     slug_override = str(post.get("slug", "")).strip() or None
     slug = sanitize(slug_override if slug_override else file_path.stem)
+
+    if not post.content.strip():
+        print("warning: article body is empty", file=sys.stderr)
 
     if errors:
         for e in errors:
@@ -118,13 +131,28 @@ HEADERS_BASE = {
 }
 
 
+def _api_error(e: urllib.error.HTTPError) -> str:
+    body = e.read().decode(errors="replace")
+    try:
+        detail = json.loads(body)
+        errors = detail.get("errors", [])
+        return "; ".join(f"{err.get('message', '')} (code {err.get('code', '?')})" for err in errors) or body
+    except Exception:
+        return body
+
+
 def api_get(path: str, token: str) -> dict:
     req = urllib.request.Request(
         f"{MEDIUM_API_BASE}{path}",
         headers={**HEADERS_BASE, "Authorization": f"Bearer {token}"},
     )
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        sys.exit(f"error: Medium API returned {e.code}: {_api_error(e)}")
+    except urllib.error.URLError as e:
+        sys.exit(f"error: network error: {e.reason}")
 
 
 def api_post(path: str, token: str, payload: dict) -> dict:
@@ -139,14 +167,9 @@ def api_post(path: str, token: str, payload: dict) -> dict:
         with urllib.request.urlopen(req) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
-        body = e.read().decode(errors="replace")
-        try:
-            detail = json.loads(body)
-            errors = detail.get("errors", [])
-            msg = "; ".join(f"{e.get('message', '')} (code {e.get('code', '?')})" for e in errors)
-        except Exception:
-            msg = body
-        sys.exit(f"error: Medium API returned {e.code}: {msg}")
+        sys.exit(f"error: Medium API returned {e.code}: {_api_error(e)}")
+    except urllib.error.URLError as e:
+        sys.exit(f"error: network error: {e.reason}")
 
 
 def resolve_publication_id(slug_or_id: str, user_id: str, token: str) -> str:
@@ -189,26 +212,54 @@ def upload_image(image_path: Path, token: str) -> str:
         with urllib.request.urlopen(req) as resp:
             return json.loads(resp.read())["data"]["url"]
     except urllib.error.HTTPError as e:
-        msg = e.read().decode(errors="replace")
-        sys.exit(f"error: image upload failed ({e.code}): {msg}")
+        sys.exit(f"error: image upload failed ({e.code}): {_api_error(e)}")
+    except urllib.error.URLError as e:
+        sys.exit(f"error: network error during image upload: {e.reason}")
 
 
+# Matches fenced code blocks (``` or ~~~) and inline code, to protect them from
+# image-ref processing. DOTALL so ``` blocks span multiple lines.
+_CODE_RE = re.compile(r'```.*?```|~~~.*?~~~|`[^`\n]+`', re.DOTALL)
 _IMAGE_RE = re.compile(r'(!\[[^\]]*\])\(([^)]+)\)')
 
 
 def upload_local_images(content: str, file_path: Path, token: str) -> str:
-    """Upload local image references and rewrite them to Medium-hosted URLs."""
-    def replace(match):
+    """Upload local image references and rewrite them to Medium-hosted URLs.
+
+    Skips image syntax inside fenced code blocks and inline code.
+    Deduplicates: the same local path is uploaded only once.
+    """
+    # Replace code spans/blocks with placeholders so their contents are invisible
+    # to the image regex, then restore them afterwards.
+    placeholders: list[str] = []
+
+    def stash(m: re.Match) -> str:
+        placeholders.append(m.group(0))
+        return f"\x00CODEBLOCK{len(placeholders) - 1}\x00"
+
+    protected = _CODE_RE.sub(stash, content)
+
+    upload_cache: dict[str, str] = {}
+
+    def replace(match: re.Match) -> str:
         src = match.group(2)
         if src.startswith(("http://", "https://")):
             return match.group(0)
         image_path = (file_path.parent / src).resolve()
         if not image_path.exists():
             sys.exit(f"error: image not found: {image_path}")
-        print(f"uploading {src} ...", file=sys.stderr)
-        url = upload_image(image_path, token)
-        return f"{match.group(1)}({url})"
-    return _IMAGE_RE.sub(replace, content)
+        key = str(image_path)
+        if key not in upload_cache:
+            print(f"uploading {src} ...", file=sys.stderr)
+            upload_cache[key] = upload_image(image_path, token)
+        return f"{match.group(1)}({upload_cache[key]})"
+
+    result = _IMAGE_RE.sub(replace, protected)
+
+    for i, block in enumerate(placeholders):
+        result = result.replace(f"\x00CODEBLOCK{i}\x00", block)
+
+    return result
 
 
 FRONTMATTER_TEMPLATE = """\
@@ -245,8 +296,9 @@ def main() -> None:
             file_path = Path(args.file)
             if not file_path.exists():
                 sys.exit(f"error: file not found: {file_path}")
-            post = frontmatter.load(str(file_path))
-            if post.metadata:
+            raw = file_path.read_text()
+            post = frontmatter.loads(raw)
+            if raw.lstrip().startswith("---") and post.metadata is not None:
                 # File already has frontmatter — merge in missing medium fields only
                 TEMPLATE_DEFAULTS = {
                     "title": None,
@@ -307,8 +359,11 @@ def main() -> None:
 
     url = result["data"].get("url", "")
 
-    post["medium_url"] = url
-    file_path.write_text(frontmatter.dumps(post))
+    try:
+        post["medium_url"] = url
+        file_path.write_text(frontmatter.dumps(post))
+    except OSError as e:
+        print(f"warning: published at {url} but could not write medium_url back to file: {e}", file=sys.stderr)
 
     print(url)
 
