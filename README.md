@@ -1,6 +1,6 @@
 # medium-publish
 
-[![Tests](https://github.com/marekkowalczyk/medium-publish/workflows/Tests/badge.svg)](https://github.com/marekkowalczyk/medium-publish/actions)
+[![Tests](https://github.com/marekkowalczyk/medium-publish/workflows/Tests/badge.svg)](https://github.com/marekkowalczyk/medium-publish/actions) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/marekkowalczyk/medium-publish/blob/main/LICENSE)
 
 Publish a Markdown article to Medium from the command line.
 
@@ -102,3 +102,6 @@ Token is resolved in this order:
 
 1. `MEDIUM_API_TOKEN` environment variable
 2. `.env` file in the repo root
+
+> **Note:** Medium is no longer issuing new API integration tokens. This tool works if you already have a token; new tokens cannot be obtained.
+> See [medium.com/help](https://help.medium.com/hc/en-us/articles/213480228-API-Importing).
