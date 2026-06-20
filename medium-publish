@@ -85,6 +85,10 @@ def validate(post, file_path: Path) -> dict:
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             errors.append(f"'medium_canonical_url' must be a valid http/https URL (got: {canonical_url!r})")
 
+    existing_url = str(post.get("medium_url", "")).strip() or None
+    if existing_url:
+        errors.append(f"already published: {existing_url} (remove 'medium_url' from frontmatter to republish)")
+
     publication = str(post.get("medium_publication", "")).strip() or None
 
     slug_override = str(post.get("slug", "")).strip() or None
@@ -191,6 +195,10 @@ def main() -> None:
         result = api_post(f"/users/{user_id}/posts", token, payload)
 
     url = result["data"].get("url", "")
+
+    post["medium_url"] = url
+    file_path.write_text(frontmatter.dumps(post))
+
     print(url)
 
 
