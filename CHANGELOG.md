@@ -1,6 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.0] — 2026-06-20
+
+### Added
+- Local images in the article body are uploaded to Medium automatically and rewritten to Medium-hosted URLs before publishing; remote URLs are left as-is
+- `--version` flag
+
+## [1.0.0] — 2026-06-20
 
 ### Added
 - `medium-publish` Python script: publishes a Markdown article to Medium via the REST API

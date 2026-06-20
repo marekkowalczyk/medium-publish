@@ -8,7 +8,7 @@ Publish a Markdown article to Medium from the command line.
 medium-publish --file path/to/article.md
 ```
 
-All configuration lives in the article's YAML frontmatter — no flags, no config files. On success, prints the Medium post URL and writes it back into the file's frontmatter to prevent accidental re-publishing.
+All configuration lives in the article's YAML frontmatter — no flags, no config files. Local images are uploaded to Medium automatically. On success, prints the Medium post URL and writes it back into the file's frontmatter to prevent accidental re-publishing.
 
 ## Installation
 
@@ -55,6 +55,25 @@ medium-publish --file my-article.md
 medium-publish --template                        # print to stdout
 medium-publish --template --file my-article.md  # prepend to file in place
 ```
+
+### Check the version
+
+```bash
+medium-publish --version
+```
+
+## Images
+
+**Inline images** referenced by local path are uploaded to Medium automatically before the post is created:
+
+```markdown
+![A caption](./images/chart.png)      # uploaded and rewritten to a Medium URL
+![A caption](https://example.com/x)  # remote URLs are left as-is
+```
+
+Images are resolved relative to the article file. The original file is not modified — only the content sent to Medium has rewritten URLs.
+
+**Cover image** is not supported by the Medium API and must be set in the editor after publishing.
 
 ## Frontmatter reference
 
