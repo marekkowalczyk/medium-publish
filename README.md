@@ -1,5 +1,7 @@
 # medium-publish
 
+[![Tests](https://github.com/marekkowalczyk/medium-publish/workflows/Tests/badge.svg)](https://github.com/marekkowalczyk/medium-publish/actions)
+
 Publish a Markdown article to Medium from the command line.
 
 ```
