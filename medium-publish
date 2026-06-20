@@ -4,7 +4,8 @@
 import argparse
 import json
 import os
-import re
+import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -22,10 +23,13 @@ MEDIUM_API_BASE = "https://api.medium.com/v1"
 
 
 def sanitize(s: str) -> str:
-    """Convert a string to a lowercase hyphen-separated slug."""
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9]+", "-", s)
-    return s.strip("-")
+    """Convert a string to a lowercase hyphen-separated slug via the sanitize binary."""
+    if not shutil.which("sanitize"):
+        sys.exit("error: 'sanitize' binary not found. Install from github.com/marekkowalczyk/sanitize")
+    result = subprocess.run(["sanitize", s], capture_output=True, text=True)
+    if result.returncode != 0:
+        sys.exit(f"error: sanitize failed: {result.stderr.strip()}")
+    return result.stdout.strip()
 
 
 def load_env_file(path: Path) -> None:
