@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+- README: added note on installing `sanitize` without Go (pre-built binaries)
+- README: documented `INSTALL_DIR` override for `make install`
+- README: clarified `--template --file` merge behaviour for files with existing frontmatter
+- README: added Development section with test command
+
+
 ## [1.3.0] — 2026-06-20
 
 ### Added
