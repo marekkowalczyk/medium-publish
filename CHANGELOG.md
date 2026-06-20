@@ -8,6 +8,9 @@
 - Note in README that Medium no longer issues new API tokens
 - Test article with local images (`test-with-images.md`) confirming end-to-end image upload pipeline
 
+### Fixed
+- `--template --file` on a file with existing frontmatter previously produced a broken double `---` block; now merges missing medium fields into the existing frontmatter without touching existing fields
+
 ## [1.1.0] — 2026-06-20
 
 ### Added
