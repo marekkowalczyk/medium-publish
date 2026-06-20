@@ -109,10 +109,16 @@ def validate(post, file_path: Path) -> dict:
     }
 
 
+HEADERS_BASE = {
+    "Accept": "application/json",
+    "User-Agent": "medium-publish/1.0 (https://github.com/marekkowalczyk/medium-publish)",
+}
+
+
 def api_get(path: str, token: str) -> dict:
     req = urllib.request.Request(
         f"{MEDIUM_API_BASE}{path}",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+        headers={**HEADERS_BASE, "Authorization": f"Bearer {token}"},
     )
     with urllib.request.urlopen(req) as resp:
         return json.loads(resp.read())
@@ -123,11 +129,7 @@ def api_post(path: str, token: str, payload: dict) -> dict:
     req = urllib.request.Request(
         f"{MEDIUM_API_BASE}{path}",
         data=data,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
+        headers={**HEADERS_BASE, "Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         method="POST",
     )
     try:
