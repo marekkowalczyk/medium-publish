@@ -19,6 +19,7 @@ git clone https://github.com/marekkowalczyk/medium-publish.git
 cd medium-publish
 pip install -r requirements.txt
 make install          # symlinks script to /usr/local/bin
+# make install INSTALL_DIR=~/bin   # custom install location
 ```
 
 **2. Install [`sanitize`](https://github.com/marekkowalczyk/sanitize)** (used for slug generation):
@@ -26,6 +27,8 @@ make install          # symlinks script to /usr/local/bin
 ```bash
 go install github.com/marekkowalczyk/sanitize@latest
 ```
+
+No Go? Download a pre-built binary from the [sanitize releases page](https://github.com/marekkowalczyk/sanitize/releases) and place it on your `$PATH`.
 
 **3. Add your Medium API token:**
 
@@ -50,6 +53,8 @@ medium-publish --file my-article.md
 medium-publish --template                        # print to stdout
 medium-publish --template --file my-article.md  # prepend to file in place
 ```
+
+If the file already has frontmatter, `--template --file` merges in any missing medium fields without touching existing ones.
 
 ### Check the version
 
@@ -90,6 +95,13 @@ medium_url: https://medium.com/p/abc123
 ```
 
 A second run on the same file will error with the existing URL. Remove `medium_url` to republish.
+
+## Development
+
+```bash
+pip install -r requirements.txt
+python3 -m pytest tests/ -v
+```
 
 ## Auth
 
