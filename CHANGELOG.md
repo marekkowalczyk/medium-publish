@@ -2,13 +2,14 @@
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-06-20
+
 ### Added
 - MIT license
 - License badge in README
 - Note in README that Medium no longer issues new API tokens
 - `requirements.txt` for `pip install -r requirements.txt`
 - `Makefile` with `make install` target — symlinks script to `/usr/local/bin` (overridable via `INSTALL_DIR`)
-- Git tags and GitHub releases for v1.0.0, v1.1.0, v1.2.0
 
 ### Removed
 - Test articles and images (`test-article.md`, `test-with-images.md`, `test-images/`)

@@ -20,7 +20,7 @@ except ImportError:
     sys.exit("error: python-frontmatter is required. Install it with: pip install python-frontmatter")
 
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 VALID_STATUSES = {"draft", "public", "unlisted"}
 MEDIUM_API_BASE = "https://api.medium.com/v1"
 
