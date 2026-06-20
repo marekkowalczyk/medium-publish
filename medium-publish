@@ -245,7 +245,26 @@ def main() -> None:
             file_path = Path(args.file)
             if not file_path.exists():
                 sys.exit(f"error: file not found: {file_path}")
-            file_path.write_text(FRONTMATTER_TEMPLATE + file_path.read_text())
+            post = frontmatter.load(str(file_path))
+            if post.metadata:
+                # File already has frontmatter — merge in missing medium fields only
+                TEMPLATE_DEFAULTS = {
+                    "title": None,
+                    "medium_status": "draft",
+                    "medium_tags": [],
+                    "medium_canonical_url": None,
+                    "medium_publication": None,
+                    "slug": None,
+                }
+                changed = False
+                for key, default in TEMPLATE_DEFAULTS.items():
+                    if key not in post.metadata:
+                        post[key] = default
+                        changed = True
+                if changed:
+                    file_path.write_text(frontmatter.dumps(post))
+            else:
+                file_path.write_text(FRONTMATTER_TEMPLATE + file_path.read_text())
             return
         print(FRONTMATTER_TEMPLATE, end="")
         return

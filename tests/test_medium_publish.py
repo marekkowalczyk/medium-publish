@@ -203,6 +203,42 @@ class TestTemplateCLI:
         assert result.returncode != 0
         assert "not found" in result.stderr
 
+    def test_template_merges_into_existing_frontmatter(self, tmp_path):
+        article = tmp_path / "article.md"
+        article.write_text("---\ntitle: Existing Title\ndate: 2026-06-20\n---\n\nBody.\n")
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "--template", "--file", str(article)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        post = frontmatter.loads(article.read_text())
+        # existing fields preserved
+        assert post["title"] == "Existing Title"
+        assert str(post["date"]) == "2026-06-20"
+        # medium fields added
+        assert "medium_status" in post.metadata
+        assert post["medium_status"] == "draft"
+        assert "medium_tags" in post.metadata
+
+    def test_template_does_not_duplicate_existing_medium_fields(self, tmp_path):
+        article = tmp_path / "article.md"
+        article.write_text(
+            "---\ntitle: My Post\nmedium_status: public\nmedium_tags: [python]\n---\n\nBody.\n"
+        )
+        subprocess.run([sys.executable, SCRIPT, "--template", "--file", str(article)])
+        post = frontmatter.loads(article.read_text())
+        # pre-existing values must not be overwritten
+        assert post["medium_status"] == "public"
+        assert post["medium_tags"] == ["python"]
+
+    def test_template_no_double_frontmatter_block(self, tmp_path):
+        article = tmp_path / "article.md"
+        article.write_text("---\ntitle: T\n---\n\nBody.\n")
+        subprocess.run([sys.executable, SCRIPT, "--template", "--file", str(article)])
+        content = article.read_text()
+        # only one frontmatter block
+        assert content.count("---") == 2
+
 
 # ---------------------------------------------------------------------------
 # User-Agent header
