@@ -26,6 +26,8 @@ load_env_file = _mod.load_env_file
 validate = _mod.validate
 api_get = _mod.api_get
 api_post = _mod.api_post
+upload_image = _mod.upload_image
+upload_local_images = _mod.upload_local_images
 HEADERS_BASE = _mod.HEADERS_BASE
 FRONTMATTER_TEMPLATE = _mod.FRONTMATTER_TEMPLATE
 SCRIPT = str(_script)
@@ -233,3 +235,110 @@ class TestUserAgent:
 
     def test_user_agent_references_repo(self):
         assert "github.com/marekkowalczyk/medium-publish" in HEADERS_BASE["User-Agent"]
+
+
+# ---------------------------------------------------------------------------
+# upload_image()
+# ---------------------------------------------------------------------------
+
+class TestUploadImage:
+    def test_returns_url_from_api(self, tmp_path):
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n")  # minimal PNG header
+        resp = _mock_response({"data": {"url": "https://cdn-images-1.medium.com/photo.png"}})
+        with patch("urllib.request.urlopen", return_value=resp):
+            url = upload_image(img, "token123")
+        assert url == "https://cdn-images-1.medium.com/photo.png"
+
+    def test_posts_to_images_endpoint(self, tmp_path):
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n")
+        resp = _mock_response({"data": {"url": "https://cdn-images-1.medium.com/photo.png"}})
+        with patch("urllib.request.urlopen", return_value=resp) as mock_open:
+            upload_image(img, "token123")
+            req = mock_open.call_args[0][0]
+            assert req.full_url.endswith("/images")
+            assert req.method == "POST"
+
+    def test_sets_multipart_content_type(self, tmp_path):
+        img = tmp_path / "photo.jpg"
+        img.write_bytes(b"\xff\xd8\xff")  # minimal JPEG header
+        resp = _mock_response({"data": {"url": "https://cdn-images-1.medium.com/photo.jpg"}})
+        with patch("urllib.request.urlopen", return_value=resp) as mock_open:
+            upload_image(img, "token123")
+            req = mock_open.call_args[0][0]
+            assert "multipart/form-data" in req.headers["Content-type"]
+
+    def test_includes_image_bytes_in_body(self, tmp_path):
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"IMAGEDATA")
+        resp = _mock_response({"data": {"url": "https://cdn-images-1.medium.com/x"}})
+        with patch("urllib.request.urlopen", return_value=resp) as mock_open:
+            upload_image(img, "token123")
+            req = mock_open.call_args[0][0]
+            assert b"IMAGEDATA" in req.data
+
+    def test_http_error_exits(self, tmp_path):
+        import urllib.error
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n")
+        err = urllib.error.HTTPError(url="", code=400, msg="Bad Request", hdrs={}, fp=io.BytesIO(b"bad image"))
+        with patch("urllib.request.urlopen", side_effect=err):
+            with pytest.raises(SystemExit):
+                upload_image(img, "token123")
+
+
+# ---------------------------------------------------------------------------
+# upload_local_images()
+# ---------------------------------------------------------------------------
+
+class TestUploadLocalImages:
+    def test_remote_urls_unchanged(self, tmp_path):
+        content = "![alt](https://example.com/image.png)"
+        result = upload_local_images(content, tmp_path / "article.md", "token")
+        assert result == content
+
+    def test_local_image_uploaded_and_rewritten(self, tmp_path):
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n")
+        content = f"![caption](photo.png)"
+        medium_url = "https://cdn-images-1.medium.com/photo.png"
+        with patch.object(_mod, "upload_image", return_value=medium_url) as mock_upload:
+            result = upload_local_images(content, tmp_path / "article.md", "token")
+        mock_upload.assert_called_once_with(img, "token")
+        assert result == f"![caption]({medium_url})"
+
+    def test_relative_path_resolved_from_article_dir(self, tmp_path):
+        subdir = tmp_path / "images"
+        subdir.mkdir()
+        img = subdir / "chart.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n")
+        content = "![chart](images/chart.png)"
+        medium_url = "https://cdn-images-1.medium.com/chart.png"
+        with patch.object(_mod, "upload_image", return_value=medium_url):
+            result = upload_local_images(content, tmp_path / "article.md", "token")
+        assert result == f"![chart]({medium_url})"
+
+    def test_multiple_images_all_uploaded(self, tmp_path):
+        for name in ("a.png", "b.png"):
+            (tmp_path / name).write_bytes(b"\x89PNG\r\n\x1a\n")
+        content = "![a](a.png)\n\n![b](b.png)"
+        with patch.object(_mod, "upload_image", return_value="https://cdn/x") as mock_upload:
+            upload_local_images(content, tmp_path / "article.md", "token")
+        assert mock_upload.call_count == 2
+
+    def test_mixed_remote_and_local(self, tmp_path):
+        img = tmp_path / "local.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n")
+        content = "![r](https://example.com/r.png) ![l](local.png)"
+        medium_url = "https://cdn/local.png"
+        with patch.object(_mod, "upload_image", return_value=medium_url) as mock_upload:
+            result = upload_local_images(content, tmp_path / "article.md", "token")
+        assert "https://example.com/r.png" in result
+        assert medium_url in result
+        mock_upload.assert_called_once()
+
+    def test_missing_local_image_exits(self, tmp_path):
+        content = "![x](nonexistent.png)"
+        with pytest.raises(SystemExit):
+            upload_local_images(content, tmp_path / "article.md", "token")
