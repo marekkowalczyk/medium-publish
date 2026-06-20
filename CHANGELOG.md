@@ -20,7 +20,7 @@
 - Slug sanitization via [`marekkowalczyk/sanitize`](https://github.com/marekkowalczyk/sanitize), handling transliteration (Łódź→lodz, café→cafe, etc.)
 - Publication support: `medium_publication` field posts to a named publication; absent posts to personal profile
 - Auth via `MEDIUM_API_TOKEN` env var or `.env` file in the repo root
-- pytest test suite (28 tests) covering validation, sanitize, env loading, CLI behaviour, and User-Agent headers
+- pytest test suite (39 tests) covering validation, sanitize, env loading, CLI behaviour, User-Agent headers, and image upload
 - GitHub Actions CI workflow running tests on every push
 - README, CLAUDE.md, DESIGN.md
 
