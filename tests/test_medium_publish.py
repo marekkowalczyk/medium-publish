@@ -1,12 +1,14 @@
 """Tests for medium-publish script."""
 
 import importlib.util
+import io
+import json
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import frontmatter
 import pytest
@@ -22,6 +24,9 @@ _loader.exec_module(_mod)
 sanitize = _mod.sanitize
 load_env_file = _mod.load_env_file
 validate = _mod.validate
+api_get = _mod.api_get
+api_post = _mod.api_post
+HEADERS_BASE = _mod.HEADERS_BASE
 FRONTMATTER_TEMPLATE = _mod.FRONTMATTER_TEMPLATE
 SCRIPT = str(_script)
 
@@ -195,3 +200,36 @@ class TestTemplateCLI:
         )
         assert result.returncode != 0
         assert "not found" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# User-Agent header
+# ---------------------------------------------------------------------------
+
+def _mock_response(body: dict):
+    """Return a mock urllib response for the given JSON body."""
+    mock = MagicMock()
+    mock.read.return_value = json.dumps(body).encode()
+    mock.__enter__ = lambda s: s
+    mock.__exit__ = MagicMock(return_value=False)
+    return mock
+
+
+class TestUserAgent:
+    def test_api_get_sends_user_agent(self):
+        resp = _mock_response({"data": {}})
+        with patch("urllib.request.urlopen", return_value=resp) as mock_open:
+            api_get("/me", "token123")
+            req = mock_open.call_args[0][0]
+            # urllib normalises header keys to title-case
+            assert "medium-publish" in req.headers["User-agent"]
+
+    def test_api_post_sends_user_agent(self):
+        resp = _mock_response({"data": {}})
+        with patch("urllib.request.urlopen", return_value=resp) as mock_open:
+            api_post("/users/x/posts", "token123", {"title": "T"})
+            req = mock_open.call_args[0][0]
+            assert "medium-publish" in req.headers["User-agent"]
+
+    def test_user_agent_references_repo(self):
+        assert "github.com/marekkowalczyk/medium-publish" in HEADERS_BASE["User-Agent"]
