@@ -12,27 +12,22 @@ All configuration lives in the article's YAML frontmatter — no flags, no confi
 
 ## Installation
 
-**1. Clone and make the script executable:**
+**1. Clone and install:**
 
 ```bash
 git clone https://github.com/marekkowalczyk/medium-publish.git
 cd medium-publish
-chmod +x medium-publish
+pip install -r requirements.txt
+make install          # symlinks script to /usr/local/bin
 ```
 
-**2. Install Python dependency:**
-
-```bash
-pip install python-frontmatter
-```
-
-**3. Install [`sanitize`](https://github.com/marekkowalczyk/sanitize)** (used for slug generation):
+**2. Install [`sanitize`](https://github.com/marekkowalczyk/sanitize)** (used for slug generation):
 
 ```bash
 go install github.com/marekkowalczyk/sanitize@latest
 ```
 
-**4. Add your Medium API token:**
+**3. Add your Medium API token:**
 
 ```bash
 cp .env.example .env
